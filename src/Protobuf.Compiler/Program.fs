@@ -13,7 +13,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ----------------------------------------------------------------------------------------------
+
+let protofile = """
+syntax = "proto3";
+
+package BankAccount.Movements;
+
+message AccountMovement {
+  uint64  toAccountId   = 1 ;
+  int64   amountInCents = 2 ;
+  string  currency      = 3 [default = "SEK"];
+}
+
+message AccountMovements {
+  uint64                    fromAccountId = 1 ;
+  repeated AccountMovements movements     = 2 ;
+}
+"""
+
+
+open ProtobufFs.Compiler.TextGenerator.Generator
+open ProtobufFs.Compiler.FsGenerator
+open ProtobufFs.Specification.Parser
+
 [<EntryPoint>]
 let main argv = 
-  printfn "%A" argv
-  0
+  match parse protofile with
+  | ParseSuccessful spec ->
+    let ctx       = gcontext ()
+    let _, result = grun ctx (generateFs "Hello" [|"hello.proto", spec |])
+    printfn "%s" result
+    0
+  | ParseFailure (msg, _, _, _) ->
+    printfn "Failed with: %A" msg
+    999

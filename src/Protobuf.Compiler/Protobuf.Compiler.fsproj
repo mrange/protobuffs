@@ -50,8 +50,17 @@
   <ItemGroup>
     <Compile Include="Common_AssemblyInfo.fs" />
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="TestGenenerator.fs" />
+    <Compile Include="FsGenerator.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Protobuf.Specification\Protobuf.Specification.fsproj">
+      <Name>Protobuf.Specification</Name>
+      <Project>{36f328dd-0a42-4e5b-b6d1-0015f6190d92}</Project>
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

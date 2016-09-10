@@ -25,10 +25,10 @@ module Model =
   type TypeIdDefinition   = TypeId    of bool*string []
   type RangeDefinition    = Range     of int*int
 
-
   type TagDefinition      = Tag of uint64
 
   type TypeDefinition =
+    | Bool
     | Int32
     | Int64
     | Uint32
@@ -36,13 +36,12 @@ module Model =
     | Sint32
     | Sint64
     | Fixed32
-    | Fixed64
     | Sfixed32
-    | Sfixed64
     | Float32
+    | Fixed64
+    | Sfixed64
     | Float64
     | Bytes
-    | Bool
     | String
     | DeclaredType      of TypeIdDefinition
 
