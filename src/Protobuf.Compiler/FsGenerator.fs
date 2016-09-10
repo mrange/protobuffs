@@ -21,6 +21,8 @@ module Common =
   open TextGenerator
   open Generator
 
+  let joinPath (path : string []) : string = System.String.Join (".", path)
+
   let memo (f : 'T -> 'U) : 'T -> 'U =
     let dic = System.Collections.Concurrent.ConcurrentDictionary<'T, 'U> ()
     let ff  = System.Func<'T, 'U> f
@@ -373,36 +375,114 @@ module FsGenerator =
     |> gnamespace "Model"
 *)
 
+  type DeclaredType =
+    | DeclaredEnum    of EnumDefinition
+    | DeclaredMessage of MessageDefinition
+
+(*
+  let rec gresolve (TypeId (rooted, path)) =
+    generator {
+      let! declaredTypes = greadEnv "DECLARED_TYPES" Map.empty
+      let! currentScope  = greadEnv "CURRENT_SCOPE"  []
+      
+      return
+        if rooted then
+          Map.tryFind (path |> List.ofArray) declaredTypes
+        else
+          let rec loop cs path =
+            match cs, Map.tryFind path declaredTypes with
+            | _       , Some dt -> Some dt 
+            | []      , None    -> None
+            | c::cs   , None    -> loop cs (c::path)
+          loop currentScope (path |> List.ofArray)
+    }
+*)
+
+  let rec fsType r d =
+    // TODO: Cache as globals
+    let fs_bool    = "bool"               , "false"
+    let fs_int32   = "int32"              , "0"
+    let fs_uint32  = "uint32"             , "0U"
+    let fs_int64   = "int64"              , "0L"
+    let fs_uint64  = "uint64"             , "0UL"
+    let fs_float32 = "float32"            , "0.f"
+    let fs_float64 = "float"              , "0."
+    let fs_string  = "string"             , "\"\""
+    let fs_bytes   = "ResizeArray<byte>"  , "ResizeArray ()"
+    if r then
+      let t, _  = fsType false d
+      let t     = sprintf "ResizeArray<%s>" t
+      let dv    = "ResizeArray ()"
+      t, dv
+    else
+      match d with
+      | TypeDefinition.Bool              -> fs_bool
+      | TypeDefinition.Int32             -> fs_int32
+      | TypeDefinition.Int64             -> fs_int64
+      | TypeDefinition.Uint32            -> fs_uint32
+      | TypeDefinition.Uint64            -> fs_uint64
+      | TypeDefinition.Sint32            -> fs_int32
+      | TypeDefinition.Sint64            -> fs_int32
+      | TypeDefinition.Fixed32           -> fs_uint32
+      | TypeDefinition.Sfixed32          -> fs_int32
+      | TypeDefinition.Float32           -> fs_float32
+      | TypeDefinition.Fixed64           -> fs_uint64
+      | TypeDefinition.Sfixed64          -> fs_int64
+      | TypeDefinition.Float64           -> fs_float64
+      | TypeDefinition.Bytes             -> fs_bytes
+      | TypeDefinition.String            -> fs_string
+      | TypeDefinition.DeclaredType tid  ->
+        // TODO: Handle rooted
+        let (TypeId (rooted, path)) = tid
+        joinPath path, "LanguagePrimitives.GenericZero"
+
   let gtodo d = gwriteLinef "// TODO: %A" d
   
   let gimport d = gtodo d
 
   let gpackage (Package (FullId ns)) =
-    let nm = System.String.Join (".", ns)
+    let nm = joinPath ns
     gwriteLinef "module %s =" nm
 
   let goption d = gtodo d
 
-  let gmessage (Message (Id id, ms)) =
+  let gmessageField (MessageField (repeated, t, Id id, tag, options)) =
+    // TODO: handle options like default value
+    let fst, fsdv = fsType repeated t
+    gwriteLinef "member val x.%s : %s = %s with get, set" id fst fsdv
+
+  let gmessageMember d =
+    match d with
+    | MessageMemberField    d -> gmessageField d
+    | MessageMemberEnum     d -> gtodo d
+    | MessageMemberInner    d -> gtodo d
+    | MessageMemberOption   d -> gtodo d
+    | MessageMemberOneOf    d -> gtodo d
+    | MessageMemberMapField d -> gtodo d
+    | MessageMemberReserved d -> gtodo d
+
+  let gmessageMembers ds = gforeach gmessageMember ds
+
+  let gmessage (Message (Id id, ds)) =
     gwriteLinef "type %s() =" id
-      >>. (gbetween (gwriteLine "class") (gwriteLine "end") (gzero ()) |> gindent)
+      >>. (gbetween (gwriteLine "class") (gwriteLine "end") (gmessageMembers ds |> gindent) |> gindent)
     |> gdelimitedf "MESSAGE: %s" id
     |> gindent
 
-  let genumMember (d : EnumMemberDefinition) =
+  let genumMember d =
     match d with
     | EnumMemberOption d  -> gtodo d
     | EnumMemberField d   -> gtodo d
 
   let genumMembers ds = gforeach genumMember ds
 
-  let genum (Enum (Id id, ms)) =
+  let genum (Enum (Id id, ds)) =
     let ms = 
-      if ms.Length = 0 then 
+      if ds.Length = 0 then 
         // TODO: Move into globals
         [| EnumField (Id "DEFAULT", Tag 0UL, [||]) |> EnumMemberField |] 
       else 
-        ms
+        ds
     gwriteLinef "type %s =" id
       >>. (genumMembers ms |> gindent)
     |> gdelimitedf "ENUM: %s" id
@@ -410,7 +490,7 @@ module FsGenerator =
 
   let gservice d = gtodo d
 
-  let gtop (top : TopDefinition) =
+  let gtop top =
     match top with
     | TopImport     d -> gimport  d
     | TopPackage    d -> gpackage d
@@ -419,10 +499,10 @@ module FsGenerator =
     | TopEnum       d -> genum    d
     | TopService    d -> gservice d
 
-  let gtops tops = gforeach gtop tops
+  let gtops ds = gforeach gtop ds
 
-  let gspecification ((path, ProtoV3 tops) : string*Specification) =
-    gtops tops
+  let gspecification ((path, ProtoV3 ds) : string*Specification) =
+    gtops ds
     |> gdelimitedf "PROTO SPECIFICATION: %s" path
 
   let gspecifications specs = gforeach gspecification specs
