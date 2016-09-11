@@ -59,6 +59,9 @@
       <Link>Common_AssemblyInfo.fs</Link>
     </Compile>
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="..\HelloProto.fs">
+      <Link>HelloProto.fs</Link>
+    </Compile>
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <Content Include="packages.config" />

@@ -50,7 +50,9 @@
   <ItemGroup>
     <Compile Include="Common_AssemblyInfo.fs" />
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="Common.fs" />
     <Compile Include="TestGenenerator.fs" />
+    <Compile Include="CommonGenerator.fs" />
     <Compile Include="FsGenerator.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
