@@ -76,24 +76,26 @@ module TextGenerator =
     member x.ReadIndent () : int              = ind
     member x.WriteIndent (i : int) : unit     = ind <- max 0 i
 
+  type EnvironmentKey<'T> = EnvironmentKey of string*'T
+
   type GeneratorContext(output : GeneratorOutput, parent : GeneratorContext option) =
     let env = Dictionary<string, obj> ()
 
     member x.Output = output
 
-    member x.ReadEnv (k : string) (dv : 'T) : 'T =
+    member x.ReadEnv (EnvironmentKey (k, dv) as ek) : 'T =
       match env.TryGetValue k with
       | true, (:? 'T as v)  -> v
       | _   , _             ->
         match parent with
-        | Some p  -> p.ReadEnv k dv
+        | Some p  -> p.ReadEnv ek
         | _       -> dv
-    member x.WriteEnv (k : string) (v : 'T) : unit =
+    member x.ResetEnv (EnvironmentKey (k, _)) : unit =
+      env.Remove k |> ignore
+    member x.WriteEnv (EnvironmentKey (k, _ : 'T)) (v : 'T) : unit =
       env.[k] <- box v
 
   type Generator<'T> = GeneratorContext -> 'T
-
-  type EnvironmentKey<'T> = EnvironmentKey of string*'T
 
   module Generator =
 
@@ -197,13 +199,13 @@ module TextGenerator =
     let inline giwritef     indent format = kprintf (giwrite     indent) format
     let inline giwriteLinef indent format = kprintf (giwriteLine indent) format
 
-    let inline greadEnv (EnvironmentKey (k, dv)) : Generator<'T> =
+    let inline greadEnv k : Generator<'T> =
       fun ctx ->
-        ctx.ReadEnv k dv
-    let inline gresetEnv (EnvironmentKey (k, dv)) : Generator<unit> =
+        ctx.ReadEnv k
+    let inline gresetEnv k : Generator<unit> =
       fun ctx ->
-        ctx.WriteEnv k dv
-    let inline gwriteEnv (EnvironmentKey (k, _))  v : Generator<unit> =
+        ctx.ResetEnv k
+    let inline gwriteEnv k v : Generator<unit> =
       fun ctx ->
         ctx.WriteEnv k v
 

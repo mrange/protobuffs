@@ -30,10 +30,60 @@ module FsGenerator =
     | DeclaredMessage   of MessageDefinition
 
   module Internals =
+
+    let defaultEnumMembers = [| EnumField (Id "DEFAULT", Tag 0UL, [||]) |> EnumMemberField |] 
+
     module Env =
       let CurrentScope  : EnvironmentKey<_> = genvKey "PBF__CURRENT_SCOPE"  []
       let DeclaredTypes : EnvironmentKey<_> = genvKey "PBF__DECLARED_TYPES" Map.empty
       let Namespace     : EnvironmentKey<_> = genvKey "PBF__NAMESPACE"      "ProtobufFs"
+
+    module KnownTypes =
+      module Converters =
+        let bconv t dv c = 
+          let ts v = if v then "true" else "false"
+          match c with 
+          | Some (ConstantFullId  _) -> t, dv   // TODO: This should mean referencing an option value
+          | Some (ConstantInteger v) -> t, ts (v <> 0L)
+          | Some (ConstantFloat   v) -> t, ts (v <> 0.)
+          | Some (ConstantString  v) -> t, ts (v <> "")
+          | Some (ConstantBoolean v) -> t, ts v
+          | None                     -> t, dv
+
+        let bsconv t dv c = 
+          // TODO: Can bytes have default values?
+          t, dv
+
+        let nconv t dv c = 
+          match c with 
+          | Some (ConstantFullId  _) -> t, dv // TODO: This should mean referencing an option value
+          | Some (ConstantInteger v) -> t, sprintf "%s %d" t v
+          | Some (ConstantFloat   v) -> t, sprintf "%s %f" t v
+          | Some (ConstantString  v) -> t, sprintf "%s \"%s\"" t v
+          | Some (ConstantBoolean v) -> t, sprintf "%s %d" t (if v then 1 else 0)
+          | None                     -> t, dv
+
+        let sconv t dv c = 
+          let es s = sprintf "\"%s\"" s // TODO: escape string
+          match c with 
+          | Some (ConstantFullId  (FullId path))  -> t, es (joinPath path)  // TODO: This should mean referencing an option value
+          | Some (ConstantInteger v)              -> t, sprintf "\"%d\"" v
+          | Some (ConstantFloat   v)              -> t, sprintf "\"%f\"" v
+          | Some (ConstantString  v)              -> t, es v
+          | Some (ConstantBoolean v)              -> t, if v then "\"true\"" else "\"false\""
+          | None                                  -> t, dv
+
+      open Converters
+      
+      let Bool    = bconv   "bool"              "false"         
+      let Int32   = nconv   "int32"             "0"             
+      let Uint32  = nconv   "uint32"            "0U"            
+      let Int64   = nconv   "int64"             "0L"            
+      let Uint64  = nconv   "uint64"            "0UL"           
+      let Float32 = nconv   "float32"           "0.f"           
+      let Float64 = nconv   "float"             "0."            
+      let String  = sconv   "string"            "\"\""          
+      let Bytes   = bsconv  "ResizeArray<byte>" "ResizeArray ()"
 
   open Internals
 
@@ -47,7 +97,6 @@ module FsGenerator =
     generator {
       let! declaredTypes = greadEnv Env.DeclaredTypes
       let! currentScope  = greadEnv Env.CurrentScope
-      
       return
         if rooted then
           Map.tryFind (path |> List.ofArray) declaredTypes
@@ -56,44 +105,43 @@ module FsGenerator =
             match cs, Map.tryFind path declaredTypes with
             | _       , Some dt -> Some dt 
             | []      , None    -> None
-            | c::cs   , None    -> loop cs (c::path)
-          loop currentScope (path |> List.ofArray)
+            | c::cs   , None    -> loop cs (path@[c])
+          let res = loop currentScope (path |> List.ofArray)
+          res
     }
 
-  let rec gfsType repeated d =
-    // TODO: Cache as globals
-    let fs_bool    = "bool"               , "false"
-    let fs_int32   = "int32"              , "0"
-    let fs_uint32  = "uint32"             , "0U"
-    let fs_int64   = "int64"              , "0L"
-    let fs_uint64  = "uint64"             , "0UL"
-    let fs_float32 = "float32"            , "0.f"
-    let fs_float64 = "float"              , "0."
-    let fs_string  = "string"             , "\"\""
-    let fs_bytes   = "ResizeArray<byte>"  , "ResizeArray ()"
+  let rec gfsType (MessageField (repeated, t, id, tag, options)) =
     if repeated then
-      gfsType false d
+      gfsType (MessageField (false, t, id, tag, options))
       >>= fun (t, _) ->
         let t     = sprintf "ResizeArray<%s>" t
         let dv    = "ResizeArray ()"
         greturn (t, dv)
     else
-      match d with
-      | TypeDefinition.Bool              -> greturn fs_bool
-      | TypeDefinition.Int32             -> greturn fs_int32
-      | TypeDefinition.Int64             -> greturn fs_int64
-      | TypeDefinition.Uint32            -> greturn fs_uint32
-      | TypeDefinition.Uint64            -> greturn fs_uint64
-      | TypeDefinition.Sint32            -> greturn fs_int32
-      | TypeDefinition.Sint64            -> greturn fs_int32
-      | TypeDefinition.Fixed32           -> greturn fs_uint32
-      | TypeDefinition.Sfixed32          -> greturn fs_int32
-      | TypeDefinition.Float32           -> greturn fs_float32
-      | TypeDefinition.Fixed64           -> greturn fs_uint64
-      | TypeDefinition.Sfixed64          -> greturn fs_int64
-      | TypeDefinition.Float64           -> greturn fs_float64
-      | TypeDefinition.Bytes             -> greturn fs_bytes
-      | TypeDefinition.String            -> greturn fs_string
+      let optionName oid =
+        match oid with
+        | OptionId      path            -> joinPath path
+        | OptionPairId  (first, second) -> Array.append first second |> joinPath
+
+      let defaultOption = 
+        options
+        |> Array.tryPick (fun (Option (oid, c)) -> if optionName oid = "default" then Some c else None)
+      match t with
+      | TypeDefinition.Bool              -> greturn <| KnownTypes.Bool    defaultOption
+      | TypeDefinition.Int32             -> greturn <| KnownTypes.Int32   defaultOption
+      | TypeDefinition.Int64             -> greturn <| KnownTypes.Int64   defaultOption
+      | TypeDefinition.Uint32            -> greturn <| KnownTypes.Uint32  defaultOption
+      | TypeDefinition.Uint64            -> greturn <| KnownTypes.Uint64  defaultOption
+      | TypeDefinition.Sint32            -> greturn <| KnownTypes.Int32   defaultOption
+      | TypeDefinition.Sint64            -> greturn <| KnownTypes.Int32   defaultOption
+      | TypeDefinition.Fixed32           -> greturn <| KnownTypes.Uint32  defaultOption
+      | TypeDefinition.Sfixed32          -> greturn <| KnownTypes.Int32   defaultOption
+      | TypeDefinition.Float32           -> greturn <| KnownTypes.Float32 defaultOption
+      | TypeDefinition.Fixed64           -> greturn <| KnownTypes.Uint64  defaultOption
+      | TypeDefinition.Sfixed64          -> greturn <| KnownTypes.Int64   defaultOption
+      | TypeDefinition.Float64           -> greturn <| KnownTypes.Float64 defaultOption
+      | TypeDefinition.Bytes             -> greturn <| KnownTypes.Bytes   defaultOption
+      | TypeDefinition.String            -> greturn <| KnownTypes.String  defaultOption
       | TypeDefinition.DeclaredType tid  ->
         // TODO: Handle rooted
         let (TypeId (rooted, path)) = tid
@@ -102,7 +150,15 @@ module FsGenerator =
         >>! fun odt ->
           match odt with
           | Some (DeclaredEnum (Enum (Id id, _))) -> 
-            t, sprintf "%s 0" id
+            let dv =
+              match defaultOption with 
+              | Some (ConstantFullId  _) -> "enum 0"  // TODO: This should mean referencing an enum value
+              | Some (ConstantInteger v) -> sprintf "enum %d" v
+              | Some (ConstantFloat   v) -> sprintf "enum (int %f)" v
+              | Some (ConstantString  v) -> sprintf "enum (int \"%s\")" v
+              | Some (ConstantBoolean v) -> sprintf "enum %d" (if v then 1 else 0)
+              | None                     -> "enum 0"
+            t, dv
           | Some (DeclaredMessage e) -> 
             t, "LanguagePrimitives.GenericZero"
           | None -> 
@@ -118,15 +174,15 @@ module FsGenerator =
       let ctx, nsn, idn = computeType ns path
       gwriteEnv Env.CurrentScope ctx
       >>. gwriteLinef "namespace %s" nsn
-      >>. (gwriteLinef "module %s =" idn |> gindent)
+      >>. 
+        (
+          gwriteLine "open ProtobufFs.Wire"
+          >>. gnewLine
+          >>. gwriteLinef "module %s =" idn 
+          |> gindent
+        )
 
   let goption d = gtodo d
-
-  let gmessageField (MessageField (repeated, t, Id id, tag, options)) =
-    // TODO: handle options like default value
-    gfsType repeated t 
-    >>= fun (fst, fsdv) ->
-      gwriteLinef "member val %s : %s = %s with get, set" id fst fsdv
 
   let genumField (EnumField (Id id, Tag tag, options)) =
     gwriteLinef "| %s = %d" id tag
@@ -139,21 +195,22 @@ module FsGenerator =
   let genumMembers ds = gforeach genumMember ds
 
   let genum (Enum (Id id, ds)) =
-    let ms = 
-      if ds.Length = 0 then 
-        // TODO: Move into globals
-        [| EnumField (Id "DEFAULT", Tag 0UL, [||]) |> EnumMemberField |] 
-      else 
-        ds
-    gwriteLinef "type %s =" id
-    >>. (genumMembers ms |> gindent)
+    let ds = if ds.Length = 0 then defaultEnumMembers else  ds
+    gwriteLinef "type [<RequireQualifiedAccess>] %s =" id
+    >>. (genumMembers ds |> gindent)
     |> gdelimitedf "ENUM: %s" id
     |> gindent
     |> gindent
 
-  let gmessageMember d =
+  let gmessageFieldBacking (MessageField (repeated, t, Id id, tag, options) as d) =
+    gfsType d
+    >>= fun (fst, fsdv) ->
+      gwriteLinef "let default_%s : %s = %s" id fst fsdv
+      >>. gwriteLinef "let mutable backing_%s = default_%s" id id
+
+  let gmessageMemberBacking d =
     match d with
-    | MessageMemberField    d -> gmessageField d
+    | MessageMemberField    d -> gmessageFieldBacking d
     | MessageMemberEnum     d -> gtodo d
     | MessageMemberInner    d -> gtodo d
     | MessageMemberOption   d -> gtodo d
@@ -161,11 +218,40 @@ module FsGenerator =
     | MessageMemberMapField d -> gtodo d
     | MessageMemberReserved d -> gtodo d
 
-  let gmessageMembers ds = gforeach gmessageMember ds
+  let gmessageFieldPublic (MessageField (repeated, t, Id id, tag, options) as d) =
+    gfsType d
+    >>= fun (fst, fsdv) ->
+      gwriteLinef "member x.%s" id
+      >>. 
+        (
+          gwriteLinef "with get () = backing_%s" id
+          >>. gwriteLinef "and  set v  = backing_%s <- v" id
+          |> gindent
+        )
+
+  let gmessageMemberPublic d =
+    match d with
+    | MessageMemberField    d -> gmessageFieldPublic d
+    | MessageMemberEnum     d -> gtodo d
+    | MessageMemberInner    d -> gtodo d
+    | MessageMemberOption   d -> gtodo d
+    | MessageMemberOneOf    d -> gtodo d
+    | MessageMemberMapField d -> gtodo d
+    | MessageMemberReserved d -> gtodo d
+
+  let gmessageMembers tn ds = 
+
+    gforeach gmessageMemberBacking ds
+    >>. gnewLine
+    >>. gwriteLinef "static member ComputeWireSize (x : %s) : int = 0" tn
+    >>. gwriteLinef "static member Write  (w : Writer, x : %s) : unit = ()" tn
+    >>. gwriteLinef "static member Read   (r : Reader, x : byref<%s>) : bool = false" tn
+    >>. gnewLine
+    >>. gforeach gmessageMemberPublic ds
 
   let gmessage (Message (Id id, ds)) =
-    gwriteLinef "type [<RequireQualifiedAccess>] %s() =" id
-    >>. (gbetween (gwriteLine "class") (gwriteLine "end") (gmessageMembers ds |> gindent) |> gindent)
+    gwriteLinef "type %s() =" id
+    >>. (gbetween (gwriteLine "class") (gwriteLine "end") (gmessageMembers id ds |> gindent) |> gindent)
     |> gdelimitedf "MESSAGE: %s" id
     |> gindent 
     |> gindent
@@ -206,8 +292,8 @@ module FsGenerator =
       ms |> Array.fold foldMessageMember (ctx, dts |> Map.add (id::ctx) (DeclaredMessage d))
 
     and foldEnum (ctx, dts) d =
-      let (Enum (Id id, _) as e) = d
-      ctx, dts |> Map.add (id::ctx) (DeclaredEnum e)
+      let (Enum (Id id, _) as d) = d
+      ctx, dts |> Map.add (id::ctx) (DeclaredEnum d)
 
     let foldPackage (ctx, dts) d =
       let (Package (FullId path)) = d
@@ -223,8 +309,7 @@ module FsGenerator =
       | TopMessage  d -> foldMessage  notModified d
       | TopEnum     d -> foldEnum     notModified d
       | TopService  d -> notModified
-    let dt = specs |> Array.fold (fun s (_, ProtoV3 tops) -> tops |> Array.fold foldTop s) ([ns], Map.empty)
-    printfn "%A" dt
+    let _, dt = specs |> Array.fold (fun s (_, ProtoV3 tops) -> tops |> Array.fold foldTop s) ([ns], Map.empty)
     gwriteEnv Env.CurrentScope []
     >>. gwriteEnv Env.DeclaredTypes dt
     >>. gwriteEnv Env.Namespace ns
