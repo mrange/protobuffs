@@ -14,6 +14,6 @@
 // limitations under the License.
 // ----------------------------------------------------------------------------------------------
 [<EntryPoint>]
-let main argv = 
+let main argv =
   printfn "%A" argv
   0

@@ -54,6 +54,6 @@ package BankAccount.Movements;
 """
 
 [<EntryPoint>]
-let main argv = 
+let main argv =
   printfn "%A" <| ProtobufFs.Specification.Parser.parse protofile
   0

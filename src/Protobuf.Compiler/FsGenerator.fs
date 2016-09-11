@@ -31,7 +31,7 @@ module FsGenerator =
 
   module Internals =
 
-    let defaultEnumMembers = [| EnumField (Id "DEFAULT", Tag 0UL, [||]) |> EnumMemberField |] 
+    let defaultEnumMembers = [| EnumField (Id "DEFAULT", Tag 0UL, [||]) |> EnumMemberField |]
 
     module Env =
       let CurrentScope  : EnvironmentKey<_> = genvKey "PBF__CURRENT_SCOPE"  []
@@ -40,9 +40,9 @@ module FsGenerator =
 
     module KnownTypes =
       module Converters =
-        let bconv t dv c = 
+        let bconv t dv c =
           let ts v = if v then "true" else "false"
-          match c with 
+          match c with
           | Some (ConstantFullId  _) -> t, dv   // TODO: This should mean referencing an option value
           | Some (ConstantInteger v) -> t, ts (v <> 0L)
           | Some (ConstantFloat   v) -> t, ts (v <> 0.)
@@ -50,12 +50,12 @@ module FsGenerator =
           | Some (ConstantBoolean v) -> t, ts v
           | None                     -> t, dv
 
-        let bsconv t dv c = 
+        let bsconv t dv c =
           // TODO: Can bytes have default values?
           t, dv
 
-        let nconv t dv c = 
-          match c with 
+        let nconv t dv c =
+          match c with
           | Some (ConstantFullId  _) -> t, dv // TODO: This should mean referencing an option value
           | Some (ConstantInteger v) -> t, sprintf "%s %d" t v
           | Some (ConstantFloat   v) -> t, sprintf "%s %f" t v
@@ -63,9 +63,9 @@ module FsGenerator =
           | Some (ConstantBoolean v) -> t, sprintf "%s %d" t (if v then 1 else 0)
           | None                     -> t, dv
 
-        let sconv t dv c = 
+        let sconv t dv c =
           let es s = sprintf "\"%s\"" s // TODO: escape string
-          match c with 
+          match c with
           | Some (ConstantFullId  (FullId path))  -> t, es (joinPath path)  // TODO: This should mean referencing an option value
           | Some (ConstantInteger v)              -> t, sprintf "\"%d\"" v
           | Some (ConstantFloat   v)              -> t, sprintf "\"%f\"" v
@@ -74,15 +74,15 @@ module FsGenerator =
           | None                                  -> t, dv
 
       open Converters
-      
-      let Bool    = bconv   "bool"              "false"         
-      let Int32   = nconv   "int32"             "0"             
-      let Uint32  = nconv   "uint32"            "0U"            
-      let Int64   = nconv   "int64"             "0L"            
-      let Uint64  = nconv   "uint64"            "0UL"           
-      let Float32 = nconv   "float32"           "0.f"           
-      let Float64 = nconv   "float"             "0."            
-      let String  = sconv   "string"            "\"\""          
+
+      let Bool    = bconv   "bool"              "false"
+      let Int32   = nconv   "int32"             "0"
+      let Uint32  = nconv   "uint32"            "0U"
+      let Int64   = nconv   "int64"             "0L"
+      let Uint64  = nconv   "uint64"            "0UL"
+      let Float32 = nconv   "float32"           "0.f"
+      let Float64 = nconv   "float"             "0."
+      let String  = sconv   "string"            "\"\""
       let Bytes   = bsconv  "ResizeArray<byte>" "ResizeArray ()"
 
   open Internals
@@ -103,7 +103,7 @@ module FsGenerator =
         else
           let rec loop cs path =
             match cs, Map.tryFind path declaredTypes with
-            | _       , Some dt -> Some dt 
+            | _       , Some dt -> Some dt
             | []      , None    -> None
             | c::cs   , None    -> loop cs (path@[c])
           let res = loop currentScope (path |> List.ofArray)
@@ -123,7 +123,7 @@ module FsGenerator =
         | OptionId      path            -> joinPath path
         | OptionPairId  (first, second) -> Array.append first second |> joinPath
 
-      let defaultOption = 
+      let defaultOption =
         options
         |> Array.tryPick (fun (Option (oid, c)) -> if optionName oid = "default" then Some c else None)
       match t with
@@ -149,9 +149,9 @@ module FsGenerator =
         gresolve tid
         >>! fun odt ->
           match odt with
-          | Some (DeclaredEnum (Enum (Id id, _))) -> 
+          | Some (DeclaredEnum (Enum (Id id, _))) ->
             let dv =
-              match defaultOption with 
+              match defaultOption with
               | Some (ConstantFullId  _) -> "enum 0"  // TODO: This should mean referencing an enum value
               | Some (ConstantInteger v) -> sprintf "enum %d" v
               | Some (ConstantFloat   v) -> sprintf "enum (int %f)" v
@@ -159,9 +159,9 @@ module FsGenerator =
               | Some (ConstantBoolean v) -> sprintf "enum %d" (if v then 1 else 0)
               | None                     -> "enum 0"
             t, dv
-          | Some (DeclaredMessage e) -> 
+          | Some (DeclaredMessage e) ->
             t, "LanguagePrimitives.GenericZero"
-          | None -> 
+          | None ->
             t, "``Unrecognized type``" // TODO: Handle not found
 
   let gtodo d = gwriteLinef "// TODO: %A" d
@@ -174,11 +174,11 @@ module FsGenerator =
       let ctx, nsn, idn = computeType ns path
       gwriteEnv Env.CurrentScope ctx
       >>. gwriteLinef "namespace %s" nsn
-      >>. 
+      >>.
         (
           gwriteLine "open ProtobufFs.Wire"
           >>. gnewLine
-          >>. gwriteLinef "module %s =" idn 
+          >>. gwriteLinef "module %s =" idn
           |> gindent
         )
 
@@ -207,6 +207,9 @@ module FsGenerator =
     >>= fun (fst, fsdv) ->
       gwriteLinef "let default_%s : %s = %s" id fst fsdv
       >>. gwriteLinef "let mutable backing_%s = default_%s" id id
+      >>. gwriteLinef "let computeWireSize_%s () = 0UL" id
+  let gmessageFieldComputeWireSize (MessageField (repeated, t, Id id, tag, options) as d) =
+    gwriteLinef "+ computeWireSize_%s ()" id
 
   let gmessageMemberBacking d =
     match d with
@@ -218,11 +221,21 @@ module FsGenerator =
     | MessageMemberMapField d -> gtodo d
     | MessageMemberReserved d -> gtodo d
 
+  let gmessageMemberComputeWireSize d =
+    match d with
+    | MessageMemberField    d -> gmessageFieldComputeWireSize d
+    | MessageMemberEnum     d -> gtodo d
+    | MessageMemberInner    d -> gtodo d
+    | MessageMemberOption   d -> gtodo d
+    | MessageMemberOneOf    d -> gtodo d
+    | MessageMemberMapField d -> gtodo d
+    | MessageMemberReserved d -> gtodo d
+
   let gmessageFieldPublic (MessageField (repeated, t, Id id, tag, options) as d) =
     gfsType d
     >>= fun (fst, fsdv) ->
       gwriteLinef "member x.%s" id
-      >>. 
+      >>.
         (
           gwriteLinef "with get () = backing_%s" id
           >>. gwriteLinef "and  set v  = backing_%s <- v" id
@@ -239,11 +252,11 @@ module FsGenerator =
     | MessageMemberMapField d -> gtodo d
     | MessageMemberReserved d -> gtodo d
 
-  let gmessageMembers tn ds = 
-
+  let gmessageMembers tn ds =
     gforeach gmessageMemberBacking ds
     >>. gnewLine
-    >>. gwriteLinef "static member ComputeWireSize (x : %s) : int = 0" tn
+    >>. gwriteLinef "member x.ComputeWireSize () ="
+    >>. (gwriteLine "0UL" >>. gforeach gmessageMemberComputeWireSize ds |> gindent)
     >>. gwriteLinef "static member Write  (w : Writer, x : %s) : unit = ()" tn
     >>. gwriteLinef "static member Read   (r : Reader, x : byref<%s>) : bool = false" tn
     >>. gnewLine
@@ -253,7 +266,7 @@ module FsGenerator =
     gwriteLinef "type %s() =" id
     >>. (gbetween (gwriteLine "class") (gwriteLine "end") (gmessageMembers id ds |> gindent) |> gindent)
     |> gdelimitedf "MESSAGE: %s" id
-    |> gindent 
+    |> gindent
     |> gindent
 
   let gservice d = gtodo d
@@ -299,7 +312,7 @@ module FsGenerator =
       let (Package (FullId path)) = d
       let ctx, _, _ = computeType ns path
       ctx, dts
-      
+
     let rec foldTop (ctx, dts) d =
       let notModified = ctx, dts
       match d with

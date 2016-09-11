@@ -15,12 +15,19 @@ namespace Hello.BankAccount
       class
         let default_toAccountId : uint64 = 0UL
         let mutable backing_toAccountId = default_toAccountId
+        let computeWireSize_toAccountId () = 0UL
         let default_amountInCents : int64 = 0L
         let mutable backing_amountInCents = default_amountInCents
+        let computeWireSize_amountInCents () = 0UL
         let default_currency : string = "EUR"
         let mutable backing_currency = default_currency
+        let computeWireSize_currency () = 0UL
 
-        static member ComputeWireSize (x : AccountMovement) : int = 0
+        member x.ComputeWireSize () =
+          0UL
+          + computeWireSize_toAccountId ()
+          + computeWireSize_amountInCents ()
+          + computeWireSize_currency ()
         static member Write  (w : Writer, x : AccountMovement) : unit = ()
         static member Read   (r : Reader, x : byref<AccountMovement>) : bool = false
 
@@ -43,10 +50,15 @@ namespace Hello.BankAccount
       class
         let default_fromAccountId : uint64 = 0UL
         let mutable backing_fromAccountId = default_fromAccountId
+        let computeWireSize_fromAccountId () = 0UL
         let default_movements : ResizeArray<AccountMovement> = ResizeArray ()
         let mutable backing_movements = default_movements
+        let computeWireSize_movements () = 0UL
 
-        static member ComputeWireSize (x : RequestAccountMovements) : int = 0
+        member x.ComputeWireSize () =
+          0UL
+          + computeWireSize_fromAccountId ()
+          + computeWireSize_movements ()
         static member Write  (w : Writer, x : RequestAccountMovements) : unit = ()
         static member Read   (r : Reader, x : byref<RequestAccountMovements>) : bool = false
 
@@ -78,16 +90,27 @@ namespace Hello.BankAccount
       class
         let default_accountType : AccountType = enum 0
         let mutable backing_accountType = default_accountType
+        let computeWireSize_accountType () = 0UL
         let default_accountId : uint64 = 0UL
         let mutable backing_accountId = default_accountId
+        let computeWireSize_accountId () = 0UL
         let default_accountName : string = ""
         let mutable backing_accountName = default_accountName
+        let computeWireSize_accountName () = 0UL
         let default_balanceInCents : int64 = 0L
         let mutable backing_balanceInCents = default_balanceInCents
+        let computeWireSize_balanceInCents () = 0UL
         let default_currency : string = "EUR"
         let mutable backing_currency = default_currency
+        let computeWireSize_currency () = 0UL
 
-        static member ComputeWireSize (x : Account) : int = 0
+        member x.ComputeWireSize () =
+          0UL
+          + computeWireSize_accountType ()
+          + computeWireSize_accountId ()
+          + computeWireSize_accountName ()
+          + computeWireSize_balanceInCents ()
+          + computeWireSize_currency ()
         static member Write  (w : Writer, x : Account) : unit = ()
         static member Read   (r : Reader, x : byref<Account>) : bool = false
 
@@ -116,8 +139,11 @@ namespace Hello.BankAccount
       class
         let default_accounts : ResizeArray<Account> = ResizeArray ()
         let mutable backing_accounts = default_accounts
+        let computeWireSize_accounts () = 0UL
 
-        static member ComputeWireSize (x : ListAccounts) : int = 0
+        member x.ComputeWireSize () =
+          0UL
+          + computeWireSize_accounts ()
         static member Write  (w : Writer, x : ListAccounts) : unit = ()
         static member Read   (r : Reader, x : byref<ListAccounts>) : bool = false
 
