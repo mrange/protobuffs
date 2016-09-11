@@ -93,6 +93,8 @@ module TextGenerator =
 
   type Generator<'T> = GeneratorContext -> 'T
 
+  type EnvironmentKey<'T> = EnvironmentKey of string*'T
+
   module Generator =
 
     module Details =
@@ -195,12 +197,17 @@ module TextGenerator =
     let inline giwritef     indent format = kprintf (giwrite     indent) format
     let inline giwriteLinef indent format = kprintf (giwriteLine indent) format
 
-    let inline greadEnv k dv : Generator<'T> =
+    let inline greadEnv (EnvironmentKey (k, dv)) : Generator<'T> =
       fun ctx ->
         ctx.ReadEnv k dv
-    let inline gwriteEnv k v : Generator<unit> =
+    let inline gresetEnv (EnvironmentKey (k, dv)) : Generator<unit> =
+      fun ctx ->
+        ctx.WriteEnv k dv
+    let inline gwriteEnv (EnvironmentKey (k, _))  v : Generator<unit> =
       fun ctx ->
         ctx.WriteEnv k v
+
+    let genvKey k dv : EnvironmentKey<'T> = EnvironmentKey (k, dv)
 
     let inline gincrementIndent (i : int) (t : Generator<'T>) : Generator<'T> =
       fun ctx ->

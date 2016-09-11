@@ -18,35 +18,44 @@ namespace Hello.BankAccount
     // -------------------------------------------------------------------------
 
     // -------------------------------------------------------------------------
-    // MESSAGE: AccountMovements
+    // MESSAGE: RequestAccountMovements
     // -------------------------------------------------------------------------
-    type [<RequireQualifiedAccess>] AccountMovements() =
+    type [<RequireQualifiedAccess>] RequestAccountMovements() =
       class
         member val fromAccountId : uint64 = 0UL with get, set
-        member val movements : ResizeArray<AccountMovements> = ResizeArray () with get, set
+        member val movements : ResizeArray<AccountMovement> = ResizeArray () with get, set
       end
     // -------------------------------------------------------------------------
 
 namespace Hello.BankAccount
-  module Movements2 =
+  module Accounts =
     // -------------------------------------------------------------------------
-    // MESSAGE: AccountMovement
+    // ENUM: AccountType
     // -------------------------------------------------------------------------
-    type [<RequireQualifiedAccess>] AccountMovement() =
+    type AccountType =
+      | Deposit = 1
+      | Savings = 2
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // MESSAGE: Account
+    // -------------------------------------------------------------------------
+    type [<RequireQualifiedAccess>] Account() =
       class
-        member val toAccountId : uint64 = 0UL with get, set
-        member val amountInCents : int64 = 0L with get, set
+        member val accountType : AccountType = ``Unrecognized type`` with get, set
+        member val accountId : uint64 = 0UL with get, set
+        member val accountName : string = "" with get, set
+        member val balanceInCents : int64 = 0L with get, set
         member val currency : string = "" with get, set
       end
     // -------------------------------------------------------------------------
 
     // -------------------------------------------------------------------------
-    // MESSAGE: AccountMovements
+    // MESSAGE: ListAccounts
     // -------------------------------------------------------------------------
-    type [<RequireQualifiedAccess>] AccountMovements() =
+    type [<RequireQualifiedAccess>] ListAccounts() =
       class
-        member val fromAccountId : uint64 = 0UL with get, set
-        member val movements : ResizeArray<AccountMovements> = ResizeArray () with get, set
+        member val accounts : ResizeArray<Account> = ResizeArray () with get, set
       end
     // -------------------------------------------------------------------------
 

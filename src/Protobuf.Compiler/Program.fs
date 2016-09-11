@@ -20,27 +20,33 @@ syntax = "proto3";
 package BankAccount.Movements;
 
 message AccountMovement {
-  uint64  toAccountId   = 1 ;
-  int64   amountInCents = 2 ;
-  string  currency      = 3 [default = "SEK"];
+  uint64                    toAccountId   = 1 ;
+  int64                     amountInCents = 2 ;
+  string                    currency      = 3 [default = "EUR"];
 }
 
-message AccountMovements {
+message RequestAccountMovements {
   uint64                    fromAccountId = 1 ;
-  repeated AccountMovements movements     = 2 ;
+  repeated AccountMovement  movements     = 2 ;
 }
 
-package BankAccount.Movements2;
+package BankAccount.Accounts;
 
-message AccountMovement {
-  uint64  toAccountId   = 1 ;
-  int64   amountInCents = 2 ;
-  string  currency      = 3 [default = "SEK"];
+enum AccountType {
+  Deposit = 1;
+  Savings = 2;
 }
 
-message AccountMovements {
-  uint64                    fromAccountId = 1 ;
-  repeated AccountMovements movements     = 2 ;
+message Account {
+  AccountType               accountType     = 1 ;
+  uint64                    accountId       = 2 ;
+  string                    accountName     = 3 ;
+  int64                     balanceInCents  = 4 ;
+  string                    currency        = 5 [default = "EUR"];
+}
+
+message ListAccounts {
+  repeated Account          accounts        = 1 ;
 }
 """
 

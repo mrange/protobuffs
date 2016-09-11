@@ -25,22 +25,28 @@ module FsGenerator =
 
   open ProtobufFs.Specification.Model
 
+  type DeclaredType =
+    | DeclaredEnum      of EnumDefinition
+    | DeclaredMessage   of MessageDefinition
+
   module Internals =
     module Env =
-      let CurrentScope  = "PBF__CURRENT_SCOPE" 
-      let DeclaredTypes = "PBF__DECLARED_TYPES"
-      let Namespace     = "PBF__NAMESPACE"
+      let CurrentScope  : EnvironmentKey<_> = genvKey "PBF__CURRENT_SCOPE"  []
+      let DeclaredTypes : EnvironmentKey<_> = genvKey "PBF__DECLARED_TYPES" Map.empty
+      let Namespace     : EnvironmentKey<_> = genvKey "PBF__NAMESPACE"      "ProtobufFs"
 
   open Internals
 
-  type DeclaredType =
-    | DeclaredEnum    of EnumDefinition
-    | DeclaredMessage of MessageDefinition
+  let computeType (ns : string) (path : string []) =
+    let ctx = Array.append [|ns|] path.[0..(path.Length - 1)] |> List.ofArray |> List.rev
+    let nsn = Array.append [|ns|] path.[0..(path.Length - 2)] |> joinPath
+    let idn = path.[path.Length - 1]
+    ctx, nsn, idn
 
   let rec gresolve (TypeId (rooted, path)) : Generator<DeclaredType option> =
     generator {
-      let! declaredTypes = greadEnv Env.DeclaredTypes Map.empty
-      let! currentScope  = greadEnv Env.CurrentScope  []
+      let! declaredTypes = greadEnv Env.DeclaredTypes
+      let! currentScope  = greadEnv Env.CurrentScope
       
       return
         if rooted then
@@ -67,10 +73,10 @@ module FsGenerator =
     let fs_bytes   = "ResizeArray<byte>"  , "ResizeArray ()"
     if repeated then
       gfsType false d
-        >>= fun (t, _) ->
-          let t     = sprintf "ResizeArray<%s>" t
-          let dv    = "ResizeArray ()"
-          greturn (t, dv)
+      >>= fun (t, _) ->
+        let t     = sprintf "ResizeArray<%s>" t
+        let dv    = "ResizeArray ()"
+        greturn (t, dv)
     else
       match d with
       | TypeDefinition.Bool              -> greturn fs_bool
@@ -93,33 +99,57 @@ module FsGenerator =
         let (TypeId (rooted, path)) = tid
         let t = joinPath path
         gresolve tid
-          >>! fun odt ->
-            match odt with
-            | Some (DeclaredEnum (Enum (Id id, _))) -> 
-              t, sprintf "%s 0" id
-            | Some (DeclaredMessage e) -> 
-              t, "LanguagePrimitives.GenericZero"
-            | None -> 
-              t, "LanguagePrimitives.GenericZero  // <Unrecognized type>" // TODO: Handle not found
+        >>! fun odt ->
+          match odt with
+          | Some (DeclaredEnum (Enum (Id id, _))) -> 
+            t, sprintf "%s 0" id
+          | Some (DeclaredMessage e) -> 
+            t, "LanguagePrimitives.GenericZero"
+          | None -> 
+            t, "``Unrecognized type``" // TODO: Handle not found
 
   let gtodo d = gwriteLinef "// TODO: %A" d
 
   let gimport d = gtodo d
 
   let gpackage (Package (FullId path)) =
-    greadEnv Env.Namespace "ProtobufFs"
+    greadEnv Env.Namespace
     >>= fun ns ->
-      let nsn = Array.append [|ns|] path.[0..(path.Length - 2)] |> joinPath
-      let idn = path.[path.Length - 1]
-      gwriteLinef "namespace %s" nsn
+      let ctx, nsn, idn = computeType ns path
+      gwriteEnv Env.CurrentScope ctx
+      >>. gwriteLinef "namespace %s" nsn
       >>. (gwriteLinef "module %s =" idn |> gindent)
 
   let goption d = gtodo d
 
   let gmessageField (MessageField (repeated, t, Id id, tag, options)) =
     // TODO: handle options like default value
-    gfsType repeated t >>= fun (fst, fsdv) ->
+    gfsType repeated t 
+    >>= fun (fst, fsdv) ->
       gwriteLinef "member val %s : %s = %s with get, set" id fst fsdv
+
+  let genumField (EnumField (Id id, Tag tag, options)) =
+    gwriteLinef "| %s = %d" id tag
+
+  let genumMember d =
+    match d with
+    | EnumMemberOption  d -> gtodo d
+    | EnumMemberField   d -> genumField d
+
+  let genumMembers ds = gforeach genumMember ds
+
+  let genum (Enum (Id id, ds)) =
+    let ms = 
+      if ds.Length = 0 then 
+        // TODO: Move into globals
+        [| EnumField (Id "DEFAULT", Tag 0UL, [||]) |> EnumMemberField |] 
+      else 
+        ds
+    gwriteLinef "type %s =" id
+    >>. (genumMembers ms |> gindent)
+    |> gdelimitedf "ENUM: %s" id
+    |> gindent
+    |> gindent
 
   let gmessageMember d =
     match d with
@@ -135,29 +165,9 @@ module FsGenerator =
 
   let gmessage (Message (Id id, ds)) =
     gwriteLinef "type [<RequireQualifiedAccess>] %s() =" id
-      >>. (gbetween (gwriteLine "class") (gwriteLine "end") (gmessageMembers ds |> gindent) |> gindent)
+    >>. (gbetween (gwriteLine "class") (gwriteLine "end") (gmessageMembers ds |> gindent) |> gindent)
     |> gdelimitedf "MESSAGE: %s" id
     |> gindent 
-    |> gindent
-
-  let genumMember d =
-    match d with
-    | EnumMemberOption d  -> gtodo d
-    | EnumMemberField d   -> gtodo d
-
-  let genumMembers ds = gforeach genumMember ds
-
-  let genum (Enum (Id id, ds)) =
-    let ms = 
-      if ds.Length = 0 then 
-        // TODO: Move into globals
-        [| EnumField (Id "DEFAULT", Tag 0UL, [||]) |> EnumMemberField |] 
-      else 
-        ds
-    gwriteLinef "type %s =" id
-      >>. (genumMembers ms |> gindent)
-    |> gdelimitedf "ENUM: %s" id
-    |> gindent
     |> gindent
 
   let gservice d = gtodo d
@@ -180,6 +190,43 @@ module FsGenerator =
   let gspecifications specs = gforeach gspecification specs
 
   let generateFs ns (specs : (string*Specification) []) =
-    gwriteEnv Env.Namespace ns
+    let rec foldMessageMember (ctx, dts) d =
+      let notModified = ctx, dts
+      match d with
+      | MessageMemberField    d -> notModified
+      | MessageMemberEnum     d -> foldEnum     notModified d
+      | MessageMemberInner    d -> foldMessage  notModified d
+      | MessageMemberOption   d -> notModified
+      | MessageMemberOneOf    d -> notModified
+      | MessageMemberMapField d -> notModified
+      | MessageMemberReserved d -> notModified
+
+    and foldMessage (ctx, dts) d =
+      let (Message (Id id, ms)) = d
+      ms |> Array.fold foldMessageMember (ctx, dts |> Map.add (id::ctx) (DeclaredMessage d))
+
+    and foldEnum (ctx, dts) d =
+      let (Enum (Id id, _) as e) = d
+      ctx, dts |> Map.add (id::ctx) (DeclaredEnum e)
+
+    let foldPackage (ctx, dts) d =
+      let (Package (FullId path)) = d
+      let ctx, _, _ = computeType ns path
+      ctx, dts
+      
+    let rec foldTop (ctx, dts) d =
+      let notModified = ctx, dts
+      match d with
+      | TopImport   d -> notModified
+      | TopPackage  d -> foldPackage  notModified d
+      | TopOption   d -> notModified
+      | TopMessage  d -> foldMessage  notModified d
+      | TopEnum     d -> foldEnum     notModified d
+      | TopService  d -> notModified
+    let dt = specs |> Array.fold (fun s (_, ProtoV3 tops) -> tops |> Array.fold foldTop s) ([ns], Map.empty)
+    printfn "%A" dt
+    gwriteEnv Env.CurrentScope []
+    >>. gwriteEnv Env.DeclaredTypes dt
+    >>. gwriteEnv Env.Namespace ns
     >>. gspecifications specs
     |> gdelimited "F# Protobuf wrappers"
